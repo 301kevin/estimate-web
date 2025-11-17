@@ -1,10 +1,10 @@
 import axios from "axios";
 
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL, // .env.local 에서 세팅
+  baseURL: import.meta.env.VITE_API_BASE_URL,
 });
 
-// 토큰 설정/해제 헬퍼
+// 로그인/로그아웃 시 Authorization 헤더 + localStorage 관리
 export function setAuthToken(token: string | null) {
   if (token) {
     api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
@@ -15,7 +15,7 @@ export function setAuthToken(token: string | null) {
   }
 }
 
-// 앱 시작 시 localStorage에 이전 토큰 있으면 자동으로 복구
+// 앱 시작 시 localStorage에 토큰 있으면 자동 세팅
 const saved = localStorage.getItem("accessToken");
 if (saved) {
   api.defaults.headers.common["Authorization"] = `Bearer ${saved}`;

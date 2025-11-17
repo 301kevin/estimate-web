@@ -1,3 +1,4 @@
+// src/pages/Login.tsx
 import React, { useState } from "react";
 import { api, setAuthToken } from "../api";
 import { useNavigate } from "react-router-dom";
@@ -15,7 +16,7 @@ const Login: React.FC = () => {
     setLoading(true);
 
     try {
-      // 백엔드 AuthController 기준: { username, password }
+      // 백엔드 LoginReq(String username, String password) 기준
       const res = await api.post("/api/auth/login", {
         username,
         password,
@@ -27,10 +28,9 @@ const Login: React.FC = () => {
       }
 
       setAuthToken(token);
-      // 로그인 성공 후 관리자 페이지로 이동
       navigate("/admin");
     } catch (err: any) {
-      console.error(err);
+      console.error("login error:", err);
       if (err.response?.status === 401) {
         setError("아이디 또는 비밀번호가 올바르지 않습니다.");
       } else {
