@@ -1,7 +1,10 @@
 import axios from "axios";
 
+const baseURL = import.meta.env.VITE_API_BASE_URL;
+console.log("API BASE URL =", baseURL); // 디버깅용
+
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL,
+  baseURL,
 });
 
 // 로그인/로그아웃 시 Authorization 헤더 + localStorage 관리
