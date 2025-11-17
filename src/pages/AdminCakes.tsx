@@ -1,23 +1,22 @@
-// estimate-web/src/pages/Admin.tsx
+// src/pages/AdminCakes.tsx
 import * as React from "react";
-import { api, setAuthToken } from "../api";
 import { useNavigate } from "react-router-dom";
+import { api, setAuthToken } from "../api";
 
-interface AdminUser {
+interface Cake {
   id: number;
-  username: string;
-  role: string;
+  name: string;
+  price: number;
 }
 
-const Admin: React.FC = () => {
-  const [rows, setRows] = React.useState<AdminUser[]>([]);
+const AdminCakes: React.FC = () => {
+  const [cakes, setCakes] = React.useState<Cake[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [err, setErr] = React.useState("");
 
-  // 추가 폼
-  const [newUsername, setNewUsername] = React.useState("");
-  const [newPassword, setNewPassword] = React.useState("");
-  const [newRole, setNewRole] = React.useState("ADMIN");
+  // 추가 폼 상태
+  const [newName, setNewName] = React.useState("");
+  const [newPrice, setNewPrice] = React.useState("");
   const [createLoading, setCreateLoading] = React.useState(false);
   const [createErr, setCreateErr] = React.useState("");
 
@@ -27,35 +26,41 @@ const Admin: React.FC = () => {
   const navigate = useNavigate();
   const currentUsername = localStorage.getItem("adminUsername");
 
-  const loadUsers = React.useCallback(() => {
+  // 공통: 인증 에러 처리
+  const handleAuthError = (status?: number) => {
+    if (status === 401) {
+      setAuthToken(null);
+      localStorage.removeItem("adminUsername");
+      navigate("/login");
+    }
+  };
+
+  // 케이크 목록 불러오기
+  const loadCakes = React.useCallback(() => {
     setLoading(true);
     api
-      .get<AdminUser[]>("/api/admin/users")
+      .get<Cake[]>("/api/cakes") // ⚠️ 백엔드 엔드포인트 그대로 사용
       .then((r) => {
-        setRows(r.data);
+        setCakes(r.data);
         setErr("");
       })
       .catch((error) => {
-        console.error("admin users error:", error);
+        console.error("load cakes error:", error);
         const status = error.response?.status;
+        handleAuthError(status);
 
-        if (status === 401) {
-          setErr("로그인이 필요합니다. 다시 로그인해주세요.");
-          setAuthToken(null);
-          localStorage.removeItem("adminUsername");
-          navigate("/login");
-        } else if (status === 403) {
+        if (status === 403) {
           setErr("관리자 권한이 없습니다.");
-        } else {
-          setErr("목록을 불러오지 못했습니다.");
+        } else if (status !== 401) {
+          setErr("케이크 목록을 불러오지 못했습니다.");
         }
       })
       .finally(() => setLoading(false));
   }, [navigate]);
 
   React.useEffect(() => {
-    loadUsers();
-  }, [loadUsers]);
+    loadCakes();
+  }, [loadCakes]);
 
   const handleLogout = () => {
     setAuthToken(null);
@@ -63,61 +68,58 @@ const Admin: React.FC = () => {
     navigate("/login");
   };
 
-  // 관리자 추가
+  // 케이크 추가
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     setCreateErr("");
 
-    const username = newUsername.trim();
-    const password = newPassword;
+    const name = newName.trim();
+    const priceNum = parseInt(newPrice, 10);
 
-    // username 3~50, password 8~100
-    if (username.length < 3 || username.length > 50) {
-      setCreateErr("아이디는 3~50자 사이여야 합니다.");
+    if (!name) {
+      setCreateErr("케이크 이름을 입력해주세요.");
       return;
     }
-    if (password.length < 8 || password.length > 100) {
-      setCreateErr("비밀번호는 8~100자 사이여야 합니다.");
+    if (Number.isNaN(priceNum) || priceNum < 0) {
+      setCreateErr("가격을 0 이상 숫자로 입력해주세요.");
       return;
     }
 
     setCreateLoading(true);
     try {
-      await api.post("/api/admin/users", {
-        username,
-        password,
-        role: newRole.trim() || "ADMIN",
+      // ⚠️ 백엔드에서 받는 필드 이름 확인 (name, price 맞음)
+      await api.post("/api/cakes", {
+        name,
+        price: priceNum,
       });
 
-      setNewUsername("");
-      setNewPassword("");
-      setNewRole("ADMIN");
-      await loadUsers();
+      setNewName("");
+      setNewPrice("");
+      await loadCakes();
     } catch (error: any) {
-      console.error("create admin error:", error);
-      if (error.response?.status === 409) {
-        setCreateErr("이미 사용 중인 아이디입니다.");
-      } else if (error.response?.status === 400) {
+      console.error("create cake error:", error);
+      const status = error.response?.status;
+      if (status === 400) {
         setCreateErr("입력값이 형식에 맞지 않습니다.");
       } else {
-        setCreateErr("관리자 계정을 생성하지 못했습니다.");
+        setCreateErr("케이크를 추가하지 못했습니다.");
       }
     } finally {
       setCreateLoading(false);
     }
   };
 
-  // 관리자 삭제
+  // 케이크 삭제
   const handleDelete = async (id: number) => {
-    if (!window.confirm(`정말로 ID ${id} 관리자 계정을 삭제할까요?`)) return;
+    if (!window.confirm(`정말로 케이크 ID ${id}를 삭제할까요?`)) return;
 
     setDeletingId(id);
     try {
-      await api.delete(`/api/admin/users/${id}`);
-      setRows((prev) => prev.filter((u) => u.id !== id));
+      await api.delete(`/api/cakes/${id}`);
+      setCakes((prev) => prev.filter((c) => c.id !== id));
     } catch (error) {
-      console.error("delete admin error:", error);
-      alert("삭제에 실패했습니다.");
+      console.error("delete cake error:", error);
+      alert("케이크 삭제에 실패했습니다.");
     } finally {
       setDeletingId(null);
     }
@@ -136,7 +138,7 @@ const Admin: React.FC = () => {
       >
         <div>
           <div style={{ fontSize: 14, color: "#6b7280" }}>Estimate API</div>
-          <h1 style={{ fontSize: 20, margin: 0 }}>관리자 콘솔</h1>
+          <h1 style={{ fontSize: 20, margin: 0 }}>케이크 관리</h1>
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -161,7 +163,7 @@ const Admin: React.FC = () => {
         </div>
       </header>
 
-      {/* 관리자 추가 섹션 */}
+      {/* 케이크 추가 섹션 */}
       <section
         style={{
           marginBottom: 32,
@@ -172,26 +174,24 @@ const Admin: React.FC = () => {
         }}
       >
         <h2 style={{ fontSize: 16, marginTop: 0, marginBottom: 12 }}>
-          관리자 계정 추가
+          케이크 추가
         </h2>
         <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 12 }}>
-          내부에서 estimate-api를 운영할 관리자 계정을 등록합니다.
+          견적에서 사용할 기본 케이크 이름과 가격을 등록합니다.
         </p>
 
         <form
           onSubmit={handleCreate}
           style={{
             display: "grid",
-            gridTemplateColumns: "1.5fr 1.5fr 1fr auto",
+            gridTemplateColumns: "2fr 1fr auto",
             gap: 8,
           }}
         >
           <input
-            placeholder="아이디 (3~50자)"
-            value={newUsername}
-            onChange={(e) => setNewUsername(e.target.value)}
-            minLength={3}
-            maxLength={50}
+            placeholder="케이크 이름"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
             style={{
               padding: 8,
               fontSize: 13,
@@ -200,23 +200,9 @@ const Admin: React.FC = () => {
             }}
           />
           <input
-            type="password"
-            placeholder="비밀번호 (8~100자)"
-            value={newPassword}
-            onChange={(e) => setNewPassword(e.target.value)}
-            minLength={8}
-            maxLength={100}
-            style={{
-              padding: 8,
-              fontSize: 13,
-              borderRadius: 8,
-              border: "1px solid #d1d5db",
-            }}
-          />
-          <input
-            placeholder='역할 (기본: "ADMIN")'
-            value={newRole}
-            onChange={(e) => setNewRole(e.target.value)}
+            placeholder="가격 (원)"
+            value={newPrice}
+            onChange={(e) => setNewPrice(e.target.value)}
             style={{
               padding: 8,
               fontSize: 13,
@@ -249,11 +235,11 @@ const Admin: React.FC = () => {
         )}
       </section>
 
-      {/* 관리자 목록 섹션 */}
+      {/* 케이크 목록 섹션 */}
       <section>
-        <h2 style={{ fontSize: 16, marginBottom: 12 }}>관리자 계정 목록</h2>
+        <h2 style={{ fontSize: 16, marginBottom: 12 }}>케이크 목록</h2>
         <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 12 }}>
-          estimate-api를 관리하는 관리자 계정 리스트입니다.
+          등록된 케이크 리스트입니다. (옵션/견적과 연결 예정)
         </p>
 
         {err && (
@@ -264,9 +250,9 @@ const Admin: React.FC = () => {
 
         {loading ? (
           <p style={{ fontSize: 13, color: "#6b7280" }}>불러오는 중...</p>
-        ) : rows.length === 0 ? (
+        ) : cakes.length === 0 ? (
           <p style={{ fontSize: 13, color: "#6b7280" }}>
-            아직 등록된 관리자 계정이 없습니다.
+            아직 등록된 케이크가 없습니다.
           </p>
         ) : (
           <div
@@ -302,7 +288,7 @@ const Admin: React.FC = () => {
                       borderBottom: "1px solid #e5e7eb",
                     }}
                   >
-                    아이디
+                    이름
                   </th>
                   <th
                     style={{
@@ -311,7 +297,7 @@ const Admin: React.FC = () => {
                       borderBottom: "1px solid #e5e7eb",
                     }}
                   >
-                    역할
+                    가격
                   </th>
                   <th
                     style={{
@@ -325,8 +311,8 @@ const Admin: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((u) => (
-                  <tr key={u.id}>
+                {cakes.map((c) => (
+                  <tr key={c.id}>
                     <td
                       style={{
                         padding: "8px 12px",
@@ -334,7 +320,7 @@ const Admin: React.FC = () => {
                         color: "#4b5563",
                       }}
                     >
-                      {u.id}
+                      {c.id}
                     </td>
                     <td
                       style={{
@@ -343,7 +329,7 @@ const Admin: React.FC = () => {
                         color: "#111827",
                       }}
                     >
-                      {u.username}
+                      {c.name}
                     </td>
                     <td
                       style={{
@@ -352,7 +338,7 @@ const Admin: React.FC = () => {
                         color: "#4b5563",
                       }}
                     >
-                      {u.role}
+                      {c.price.toLocaleString()} 원
                     </td>
                     <td
                       style={{
@@ -361,21 +347,21 @@ const Admin: React.FC = () => {
                       }}
                     >
                       <button
-                        onClick={() => handleDelete(u.id)}
-                        disabled={deletingId === u.id}
+                        onClick={() => handleDelete(c.id)}
+                        disabled={deletingId === c.id}
                         style={{
                           padding: "4px 10px",
                           fontSize: 12,
                           borderRadius: 999,
                           border: "1px solid #fecaca",
                           background:
-                            deletingId === u.id ? "#fee2e2" : "white",
+                            deletingId === c.id ? "#fee2e2" : "white",
                           color: "#b91c1c",
                           cursor:
-                            deletingId === u.id ? "default" : "pointer",
+                            deletingId === c.id ? "default" : "pointer",
                         }}
                       >
-                        {deletingId === u.id ? "삭제 중..." : "삭제"}
+                        {deletingId === c.id ? "삭제 중..." : "삭제"}
                       </button>
                     </td>
                   </tr>
@@ -389,4 +375,4 @@ const Admin: React.FC = () => {
   );
 };
 
-export default Admin;
+export default AdminCakes;

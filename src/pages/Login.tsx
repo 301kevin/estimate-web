@@ -1,4 +1,3 @@
-// src/pages/Login.tsx
 import React, { useState } from "react";
 import { api, setAuthToken } from "../api";
 import { useNavigate } from "react-router-dom";
@@ -16,7 +15,6 @@ const Login: React.FC = () => {
     setLoading(true);
 
     try {
-      // 백엔드 LoginReq(String username, String password) 기준
       const res = await api.post("/api/auth/login", {
         username,
         password,
@@ -27,7 +25,11 @@ const Login: React.FC = () => {
         throw new Error("토큰 없음");
       }
 
+      // ✅ 토큰 저장
       setAuthToken(token);
+      // ✅ 현재 로그인한 관리자 이름도 저장 (헤더에 표시용)
+      localStorage.setItem("adminUsername", username);
+
       navigate("/admin");
     } catch (err: any) {
       console.error("login error:", err);

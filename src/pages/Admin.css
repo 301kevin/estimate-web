@@ -1,0 +1,50 @@
+/* src/pages/Admin.css */
+
+.admin-root {
+  max-width: 960px;
+  margin: 32px auto;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.admin-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.admin-header-title {
+  font-size: 20px;
+  margin: 0;
+}
+
+.admin-card {
+  margin-bottom: 32px;
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  background: white;
+}
+
+.admin-table-wrap {
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  overflow: hidden;
+  background: white;
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.admin-table th,
+.admin-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.admin-table thead {
+  background: #f9fafb;
+}
