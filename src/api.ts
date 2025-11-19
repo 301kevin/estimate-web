@@ -1,14 +1,18 @@
+// src/api.ts
 import axios from "axios";
 
-const baseURL = import.meta.env.VITE_API_BASE_URL;
-console.log("API BASE URL =", baseURL); // 디버깅용
+const baseURL =
+  import.meta.env.VITE_API_BASE_URL ||
+  (import.meta.env.DEV
+    ? "http://localhost:8080" // 로컬 개발할 때 백엔드 주소
+    : "https://api.estimate-api.shop"); // 배포용 백엔드 주소 (★ 중요)
 
 export const api = axios.create({
   baseURL,
+  withCredentials: false,
 });
 
-// 로그인/로그아웃 시 Authorization 헤더 + localStorage 관리
-export function setAuthToken(token: string | null) {
+export const setAuthToken = (token: string | null) => {
   if (token) {
     api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
     localStorage.setItem("accessToken", token);
@@ -16,10 +20,4 @@ export function setAuthToken(token: string | null) {
     delete api.defaults.headers.common["Authorization"];
     localStorage.removeItem("accessToken");
   }
-}
-
-// 앱 시작 시 localStorage에 토큰 있으면 자동 세팅
-const saved = localStorage.getItem("accessToken");
-if (saved) {
-  api.defaults.headers.common["Authorization"] = `Bearer ${saved}`;
-}
+};
