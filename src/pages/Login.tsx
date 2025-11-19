@@ -11,29 +11,30 @@ const Login: React.FC = () => {
   const [loading, setLoading] = React.useState(false);
   const [err, setErr] = React.useState("");
 
+  React.useEffect(() => {
+    const token = localStorage.getItem("accessToken");
+    if (token) {
+      navigate("/admin", { replace: true });
+    }
+  }, [navigate]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setErr("");
-
-    if (!username.trim() || !password) {
-      setErr("아이디와 비밀번호를 입력해주세요.");
+    if (!username.trim() || !password.trim()) {
+      setErr("아이디와 비밀번호를 모두 입력해주세요.");
       return;
     }
 
     setLoading(true);
+    setErr("");
+
     try {
       const res = await api.post("/api/auth/login", {
         username: username.trim(),
-        password,
+        password: password.trim(),
       });
 
-      const token = res.data.accessToken;
-      if (!token) {
-        setErr("토큰이 응답에 없습니다.");
-        return;
-      }
-
-      // 토큰 + 관리자 아이디 저장
+      const token: string = res.data.accessToken;
       setAuthToken(token);
       localStorage.setItem("adminUsername", username.trim());
 
@@ -41,10 +42,11 @@ const Login: React.FC = () => {
     } catch (error: any) {
       console.error("login error:", error);
       const status = error.response?.status;
+
       if (status === 401) {
         setErr("아이디 또는 비밀번호가 올바르지 않습니다.");
       } else {
-        setErr("로그인에 실패했습니다.");
+        setErr("로그인 중 오류가 발생했습니다.");
       }
     } finally {
       setLoading(false);
@@ -52,81 +54,51 @@ const Login: React.FC = () => {
   };
 
   return (
-    <div
-      style={{
-        maxWidth: 360,
-        margin: "72px auto",
-        padding: 24,
-        borderRadius: 12,
-        border: "1px solid #e5e7eb",
-        fontFamily: "system-ui",
-        background: "white",
-      }}
-    >
-      <h1 style={{ fontSize: 20, marginBottom: 16 }}>관리자 로그인</h1>
-
-      <form
-        onSubmit={handleSubmit}
-        style={{ display: "flex", flexDirection: "column", gap: 12 }}
-      >
-        <div>
-          <label style={{ fontSize: 13, display: "block", marginBottom: 4 }}>
-            아이디
-          </label>
-          <input
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            autoComplete="username"
-            style={{
-              width: "100%",
-              padding: 8,
-              fontSize: 13,
-              borderRadius: 8,
-              border: "1px solid #d1d5db",
-            }}
-          />
+    <div className="auth-page">
+      <div className="card auth-card">
+        <div className="card-header">
+          <h1 className="card-title">Estimate Admin</h1>
+          <p className="card-sub">
+            케이크 / 옵션 / 견적 관리를 위한 관리자 전용 로그인입니다.
+          </p>
         </div>
 
-        <div>
-          <label style={{ fontSize: 13, display: "block", marginBottom: 4 }}>
-            비밀번호
-          </label>
-          <input
-            type="password"
-            value={password}
-            autoComplete="current-password"
-            onChange={(e) => setPassword(e.target.value)}
-            style={{
-              width: "100%",
-              padding: 8,
-              fontSize: 13,
-              borderRadius: 8,
-              border: "1px solid #d1d5db",
-            }}
-          />
-        </div>
+        {err && <p className="text-error" style={{ marginBottom: 10 }}>{err}</p>}
 
-        {err && (
-          <p style={{ fontSize: 12, color: "crimson", marginTop: 4 }}>{err}</p>
-        )}
+        <form onSubmit={handleSubmit}>
+          <div className="form-field">
+            <label className="form-label">아이디</label>
+            <input
+              className="input"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              autoComplete="username"
+              placeholder="admin"
+            />
+          </div>
 
-        <button
-          type="submit"
-          disabled={loading}
-          style={{
-            marginTop: 4,
-            padding: "8px 12px",
-            fontSize: 14,
-            borderRadius: 999,
-            border: "none",
-            background: "#4f46e5",
-            color: "white",
-            cursor: loading ? "default" : "pointer",
-          }}
-        >
-          {loading ? "로그인 중..." : "로그인"}
-        </button>
-      </form>
+          <div className="form-field">
+            <label className="form-label">비밀번호</label>
+            <input
+              className="input"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+              placeholder="••••••••"
+            />
+          </div>
+
+          <button
+            type="submit"
+            className="btn btn-primary"
+            style={{ width: "100%", marginTop: 8 }}
+            disabled={loading}
+          >
+            {loading ? "로그인 중..." : "로그인"}
+          </button>
+        </form>
+      </div>
     </div>
   );
 };

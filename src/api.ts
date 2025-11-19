@@ -1,18 +1,13 @@
 // src/api.ts
 import axios from "axios";
 
-const baseURL =
-  import.meta.env.VITE_API_BASE_URL ||
-  (import.meta.env.DEV
-    ? "http://localhost:8080" // 로컬 백엔드
-    : "https://api.estimate-api.shop"); // 배포 백엔드
-
-export const api = axios.create({
-  baseURL,
+const api = axios.create({
+  baseURL: import.meta.env.VITE_API_BASE_URL || "http://localhost:8080",
   withCredentials: false,
 });
 
-export const setAuthToken = (token: string | null) => {
+// 토큰 설정 헬퍼
+export function setAuthToken(token: string | null) {
   if (token) {
     api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
     localStorage.setItem("accessToken", token);
@@ -20,21 +15,33 @@ export const setAuthToken = (token: string | null) => {
     delete api.defaults.headers.common["Authorization"];
     localStorage.removeItem("accessToken");
   }
-};
+}
 
-// 🔐 401(권한 없음) 전역 처리: 토큰 날리고 로그인 화면으로 이동
+// 앱 시작할 때 localStorage에 토큰 있으면 헤더에 넣기
+const stored = localStorage.getItem("accessToken");
+if (stored) {
+  api.defaults.headers.common["Authorization"] = `Bearer ${stored}`;
+}
+
+// 401 인터셉터: 토큰 만료/인증 오류 → 자동 로그아웃 + /login 이동
 api.interceptors.response.use(
-  (response) => response,
+  (res) => res,
   (error) => {
     const status = error.response?.status;
+
     if (status === 401) {
+      // 토큰/유저명 제거
       setAuthToken(null);
       localStorage.removeItem("adminUsername");
-      // SPA 라우터 무시하고 강제 리다이렉트
-      if (window.location.pathname !== "/login") {
+
+      // 이미 /login 이 아니면 로그인 화면으로 강제 이동
+      if (!window.location.pathname.startsWith("/login")) {
         window.location.href = "/login";
       }
     }
+
     return Promise.reject(error);
   }
 );
+
+export { api };

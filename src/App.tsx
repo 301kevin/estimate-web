@@ -1,6 +1,6 @@
 // src/App.tsx
 import * as React from "react";
-import { Routes, Route, Link } from "react-router-dom";
+import { Routes, Route, NavLink } from "react-router-dom";
 
 import Home from "./pages/Home";
 import Login from "./pages/Login";
@@ -12,7 +12,6 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import { setAuthToken } from "./api";
 
 const App: React.FC = () => {
-  // 새로고침했을 때도 axios에 Authorization 헤더 다시 심어주기
   React.useEffect(() => {
     const saved = localStorage.getItem("accessToken");
     if (saved) {
@@ -20,28 +19,43 @@ const App: React.FC = () => {
     }
   }, []);
 
+  const navLinkClass = ({ isActive }: { isActive: boolean }) =>
+    `app-nav-link${isActive ? " active" : ""}`;
+
   return (
-    <div style={{ fontFamily: "system-ui" }}>
-      <header
-        style={{
-          padding: "12px 24px",
-          borderBottom: "1px solid #e5e7eb",
-          display: "flex",
-          gap: 16,
-          alignItems: "center",
-        }}
-      >
-        <Link to="/" style={{ fontWeight: 600 }}>
-          Estimate API
-        </Link>
-        <Link to="/login">관리자 로그인</Link>
-        <Link to="/admin">관리자 계정</Link>
-        <Link to="/admin/cakes">케이크</Link>
-        <Link to="/admin/cake-options">케이크 옵션</Link>
-        <Link to="/admin/estimates">견적 생성</Link>
+    <div className="app-shell">
+      <header className="app-header">
+        <div className="app-logo">
+          <div className="app-logo-mark" />
+          <div>
+            <div>Estimate API</div>
+            <div className="app-logo-sub">케이크 견적 · 관리자 콘솔</div>
+          </div>
+        </div>
+
+        <nav className="app-nav">
+          <NavLink to="/" className={navLinkClass} end>
+            홈
+          </NavLink>
+          <NavLink to="/login" className={navLinkClass}>
+            로그인
+          </NavLink>
+          <NavLink to="/admin" className={navLinkClass}>
+            계정
+          </NavLink>
+          <NavLink to="/admin/cakes" className={navLinkClass}>
+            케이크
+          </NavLink>
+          <NavLink to="/admin/cake-options" className={navLinkClass}>
+            옵션
+          </NavLink>
+          <NavLink to="/admin/estimates" className={navLinkClass}>
+            견적
+          </NavLink>
+        </nav>
       </header>
 
-      <main style={{ minHeight: "calc(100vh - 56px)" }}>
+      <main className="app-main">
         <Routes>
           <Route path="/" element={<Home />} />
 
@@ -55,7 +69,6 @@ const App: React.FC = () => {
               </ProtectedRoute>
             }
           />
-
           <Route
             path="/admin/cakes"
             element={
@@ -64,7 +77,6 @@ const App: React.FC = () => {
               </ProtectedRoute>
             }
           />
-
           <Route
             path="/admin/cake-options"
             element={
@@ -73,7 +85,6 @@ const App: React.FC = () => {
               </ProtectedRoute>
             }
           />
-
           <Route
             path="/admin/estimates"
             element={
