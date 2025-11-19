@@ -1,7 +1,6 @@
 // src/pages/AdminCakeOptions.tsx
 import * as React from "react";
-import { useNavigate } from "react-router-dom";
-import { api, setAuthToken } from "../api";
+import { api } from "../api";
 
 interface Cake {
   id: number;
@@ -21,343 +20,493 @@ const AdminCakeOptions: React.FC = () => {
   const [selectedCakeId, setSelectedCakeId] = React.useState<number | null>(null);
 
   const [options, setOptions] = React.useState<CakeOption[]>([]);
-  const [newName, setNewName] = React.useState("");
-  const [newPrice, setNewPrice] = React.useState("");
-
   const [loadingCakes, setLoadingCakes] = React.useState(true);
   const [loadingOptions, setLoadingOptions] = React.useState(false);
-  const [saving, setSaving] = React.useState(false);
   const [err, setErr] = React.useState("");
 
-  const navigate = useNavigate();
-  const currentUsername = localStorage.getItem("adminUsername");
+  // 새 옵션 추가 폼
+  const [newName, setNewName] = React.useState("");
+  const [newPrice, setNewPrice] = React.useState<string>("0");
+  const [creating, setCreating] = React.useState(false);
 
-  const handleAuthError = (status?: number) => {
-    if (status === 401) {
-      setAuthToken(null);
-      localStorage.removeItem("adminUsername");
-      navigate("/login");
-    }
-  };
+  // 편집 상태
+  const [editingId, setEditingId] = React.useState<number | null>(null);
+  const [editName, setEditName] = React.useState("");
+  const [editPrice, setEditPrice] = React.useState<string>("0");
+  const [savingEdit, setSavingEdit] = React.useState(false);
 
-  // 케이크 목록 로드
+  // 케이크 목록 불러오기
   const loadCakes = React.useCallback(() => {
     setLoadingCakes(true);
+    setErr("");
+
     api
       .get<Cake[]>("/api/cakes")
-      .then((r) => {
-        setCakes(r.data);
-        if (r.data.length > 0 && selectedCakeId == null) {
-          setSelectedCakeId(r.data[0].id);
+      .then((res) => {
+        const list = res.data;
+        setCakes(list);
+        if (list.length > 0) {
+          // 선택된 케이크가 없으면 첫 번째 케이크 선택
+          setSelectedCakeId((prev) => prev ?? list[0].id);
+        } else {
+          setSelectedCakeId(null);
         }
-        setErr("");
       })
       .catch((error) => {
-        console.error("load cakes error:", error);
-        handleAuthError(error.response?.status);
-        setErr("케이크 목록을 불러오지 못했습니다.");
+        console.error("load cakes for options error:", error);
+        setErr("케이크 목록을 불러오지 못했습니다. (권한/서버 상태를 확인하세요)");
       })
       .finally(() => setLoadingCakes(false));
-  }, [selectedCakeId, navigate]);
+  }, []);
 
-  // 특정 케이크 옵션 목록 로드
-  const loadOptions = React.useCallback(
-    (cakeId: number) => {
-      setLoadingOptions(true);
-      api
-        .get<CakeOption[]>(`/api/cakes/${cakeId}/options`)
-        .then((r) => {
-          setOptions(r.data);
-          setErr("");
-        })
-        .catch((error) => {
-          console.error("load options error:", error);
-          handleAuthError(error.response?.status);
-          setErr("케이크 옵션 목록을 불러오지 못했습니다.");
-        })
-        .finally(() => setLoadingOptions(false));
-    },
-    [navigate]
-  );
+  // 특정 케이크의 옵션 목록 불러오기
+  const loadOptions = React.useCallback((cakeId: number | null) => {
+    if (!cakeId) {
+      setOptions([]);
+      return;
+    }
 
-  // 최초 로드 시 케이크 목록
+    setLoadingOptions(true);
+    setErr("");
+
+    api
+      .get<CakeOption[]>(`/api/cakes/${cakeId}/options`)
+      .then((res) => {
+        setOptions(res.data);
+      })
+      .catch((error) => {
+        console.error("load options error:", error);
+        setErr("옵션 목록을 불러오지 못했습니다. (권한/서버 상태를 확인하세요)");
+      })
+      .finally(() => setLoadingOptions(false));
+  }, []);
+
+  // 처음 마운트 시 케이크 목록 로딩
   React.useEffect(() => {
     loadCakes();
   }, [loadCakes]);
 
-  // 케이크 선택이 바뀔 때 옵션 목록 로드
+  // 선택된 케이크 변경 시 옵션 로딩
   React.useEffect(() => {
-    if (selectedCakeId != null) {
-      loadOptions(selectedCakeId);
-    } else {
-      setOptions([]);
-    }
+    loadOptions(selectedCakeId);
+    // 케이크 바뀌면 편집 상태/에러 초기화
+    setEditingId(null);
+    setEditName("");
+    setEditPrice("0");
+    setErr("");
   }, [selectedCakeId, loadOptions]);
 
-  const handleLogout = () => {
-    setAuthToken(null);
-    localStorage.removeItem("adminUsername");
-    navigate("/login");
-  };
+  const selectedCake = React.useMemo(
+    () => cakes.find((c) => c.id === selectedCakeId) ?? null,
+    [cakes, selectedCakeId]
+  );
 
-  const handleAddOption = async (e: React.FormEvent) => {
+  // 새 옵션 추가
+  const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (selectedCakeId == null) {
-      setErr("먼저 케이크를 선택해주세요.");
+    if (!selectedCakeId) {
+      setErr("먼저 상단에서 케이크를 선택해주세요.");
       return;
     }
     if (!newName.trim()) {
       setErr("옵션 이름을 입력해주세요.");
       return;
     }
-    const priceNum = parseInt(newPrice, 10);
-    if (Number.isNaN(priceNum)) {
-      setErr("추가 금액을 숫자로 입력해주세요.");
+
+    const priceValue = Number(newPrice);
+    if (Number.isNaN(priceValue) || priceValue < 0) {
+      setErr("추가 금액은 0 이상 숫자로 입력해주세요.");
       return;
     }
 
-    setSaving(true);
+    setCreating(true);
     setErr("");
 
     try {
-      await api.post(`/api/cakes/${selectedCakeId}/options`, {
-        optionName: newName.trim(),
-        price: priceNum,
-      });
+      const res = await api.post<CakeOption>(
+        `/api/cakes/${selectedCakeId}/options`,
+        {
+          optionName: newName.trim(),
+          price: priceValue,
+        }
+      );
 
-      await loadOptions(selectedCakeId);
+      setOptions((prev) => [res.data, ...prev]);
       setNewName("");
-      setNewPrice("");
+      setNewPrice("0");
     } catch (error: any) {
       console.error("create option error:", error);
       const status = error.response?.status;
-      if (status === 409) {
-        setErr("이미 같은 이름의 옵션이 존재하거나 데이터 무결성 위반입니다.");
-      } else if (status === 400) {
-        setErr("입력값을 다시 확인해주세요.");
+      const code = error.response?.data?.code;
+
+      if (status === 400) {
+        setErr("입력값을 다시 확인해주세요. (길이/검증 제약 위반)");
+      } else if (status === 409 && code === "DATA_INTEGRITY_VIOLATION") {
+        setErr("중복되거나 유효하지 않은 옵션입니다. 이름/금액을 다시 확인해주세요.");
       } else {
-        setErr("옵션 추가 중 오류가 발생했습니다.");
+        setErr("옵션 생성 중 오류가 발생했습니다.");
       }
     } finally {
-      setSaving(false);
+      setCreating(false);
     }
   };
 
-  const handleDeleteOption = async (optId: number) => {
+  // 편집 시작
+  const startEdit = (opt: CakeOption) => {
+    setEditingId(opt.id);
+    setEditName(opt.optionName);
+    setEditPrice(String(opt.price));
+    setErr("");
+  };
+
+  // 편집 취소
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditName("");
+    setEditPrice("0");
+  };
+
+  // 편집 저장
+  const saveEdit = async (id: number) => {
     if (!selectedCakeId) return;
-    if (!window.confirm("이 옵션을 삭제하시겠습니까?")) return;
+
+    if (!editName.trim()) {
+      setErr("옵션 이름을 입력해주세요.");
+      return;
+    }
+
+    const priceValue = Number(editPrice);
+    if (Number.isNaN(priceValue) || priceValue < 0) {
+      setErr("추가 금액은 0 이상 숫자로 입력해주세요.");
+      return;
+    }
+
+    setSavingEdit(true);
+    setErr("");
 
     try {
-      await api.delete(`/api/cakes/${selectedCakeId}/options/${optId}`);
-      await loadOptions(selectedCakeId);
+      const res = await api.put<CakeOption>(
+        `/api/cakes/${selectedCakeId}/options/${id}`,
+        {
+          optionName: editName.trim(),
+          price: priceValue,
+        }
+      );
+
+      setOptions((prev) =>
+        prev.map((o) => (o.id === id ? res.data : o))
+      );
+      cancelEdit();
+    } catch (error: any) {
+      console.error("update option error:", error);
+      const status = error.response?.status;
+      const code = error.response?.data?.code;
+
+      if (status === 400) {
+        setErr("입력값을 다시 확인해주세요. (길이/검증 제약 위반)");
+      } else if (status === 404) {
+        setErr("해당 옵션을 찾을 수 없습니다. (이미 삭제되었을 수 있음)");
+      } else if (status === 409 && code === "DATA_INTEGRITY_VIOLATION") {
+        setErr("중복되거나 유효하지 않은 옵션입니다. 이름/금액을 다시 확인해주세요.");
+      } else {
+        setErr("옵션 수정 중 오류가 발생했습니다.");
+      }
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  // 삭제
+  const handleDelete = async (id: number) => {
+    if (!selectedCakeId) return;
+    if (!window.confirm("정말로 이 옵션을 삭제할까요?")) return;
+
+    try {
+      await api.delete(`/api/cakes/${selectedCakeId}/options/${id}`);
+      setOptions((prev) => prev.filter((o) => o.id !== id));
+      if (editingId === id) {
+        cancelEdit();
+      }
     } catch (error) {
       console.error("delete option error:", error);
-      setErr("옵션 삭제 중 오류가 발생했습니다.");
+      alert("삭제 중 오류가 발생했습니다.");
     }
+  };
+
+  // 케이크 선택 변경
+  const handleCakeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const value = e.target.value;
+    if (!value) {
+      setSelectedCakeId(null);
+      return;
+    }
+    setSelectedCakeId(Number(value));
   };
 
   return (
-    <div style={{ maxWidth: 960, margin: "32px auto", fontFamily: "system-ui" }}>
-      {/* 상단 바 */}
-      <header
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 24,
-        }}
-      >
-        <div>
-          <div style={{ fontSize: 14, color: "#6b7280" }}>Estimate API</div>
-          <h1 style={{ fontSize: 20, margin: 0 }}>케이크 옵션 관리</h1>
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "minmax(0, 1.7fr) minmax(0, 1.3fr)",
+        gap: 18,
+      }}
+    >
+      {/* 왼쪽: 옵션 목록 */}
+      <section className="card">
+        <div className="card-header">
+          <h1 className="card-title">케이크 옵션 관리</h1>
+          <p className="card-sub">
+            선택한 케이크에 연결되는 사이즈, 토핑, 문구 같은 옵션들을 관리합니다.
+            <br />
+            각 옵션은 기본 가격에 더해지는 추가 금액(원)으로 동작합니다.
+          </p>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          {currentUsername && (
-            <span style={{ fontSize: 14, color: "#4b5563" }}>
-              {currentUsername} 님
-            </span>
+        {/* 케이크 선택 영역 */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            marginBottom: 12,
+            flexWrap: "wrap",
+          }}
+        >
+          <div style={{ minWidth: 260 }}>
+            <label className="form-label">대상 케이크 선택</label>
+            {loadingCakes ? (
+              <div style={{ fontSize: 12, color: "#9ca3af" }}>
+                케이크 목록을 불러오는 중입니다...
+              </div>
+            ) : cakes.length === 0 ? (
+              <div style={{ fontSize: 12, color: "#f97373" }}>
+                등록된 케이크가 없습니다. 먼저 케이크 관리 화면에서 상품을 추가해주세요.
+              </div>
+            ) : (
+              <select
+                className="select"
+                value={selectedCakeId ?? ""}
+                onChange={handleCakeChange}
+              >
+                {cakes.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} ({c.price.toLocaleString()}원)
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          {selectedCake && (
+            <div
+              style={{
+                fontSize: 12,
+                color: "#9ca3af",
+              }}
+            >
+              <div>
+                <span className="chip">
+                  기준 케이크: {selectedCake.name} · {selectedCake.price.toLocaleString()}원
+                </span>
+              </div>
+            </div>
           )}
-          <button
-            onClick={handleLogout}
-            style={{
-              padding: "6px 12px",
-              fontSize: 13,
-              borderRadius: 999,
-              border: "1px solid #e5e7eb",
-              background: "white",
-              cursor: "pointer",
-            }}
-          >
-            로그아웃
-          </button>
         </div>
-      </header>
 
-      {err && (
-        <p style={{ color: "crimson", fontSize: 13, marginBottom: 12 }}>{err}</p>
-      )}
-
-      {/* 케이크 선택 */}
-      <section
-        style={{
-          marginBottom: 24,
-          padding: 16,
-          borderRadius: 12,
-          border: "1px solid #e5e7eb",
-          background: "white",
-        }}
-      >
-        <h2 style={{ fontSize: 16, marginTop: 0, marginBottom: 12 }}>
-          1. 케이크 선택
-        </h2>
-        {loadingCakes ? (
-          <p style={{ fontSize: 13, color: "#6b7280" }}>케이크 목록 불러오는 중...</p>
-        ) : cakes.length === 0 ? (
-          <p style={{ fontSize: 13, color: "#6b7280" }}>
-            등록된 케이크가 없습니다. 먼저 케이크를 추가해주세요.
+        {err && (
+          <p className="text-error" style={{ marginBottom: 8 }}>
+            {err}
           </p>
-        ) : (
-          <select
-            value={selectedCakeId ?? ""}
-            onChange={(e) =>
-              setSelectedCakeId(
-                e.target.value ? parseInt(e.target.value, 10) : null
-              )
-            }
-            style={{
-              padding: 8,
-              fontSize: 13,
-              borderRadius: 8,
-              border: "1px solid #d1d5db",
-            }}
-          >
-            {cakes.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name} ({c.price.toLocaleString()} 원)
-              </option>
-            ))}
-          </select>
         )}
-      </section>
 
-      {/* 옵션 목록 + 추가 */}
-      <section
-        style={{
-          marginBottom: 24,
-          padding: 16,
-          borderRadius: 12,
-          border: "1px solid #e5e7eb",
-          background: "white",
-        }}
-      >
-        <h2 style={{ fontSize: 16, marginTop: 0, marginBottom: 12 }}>
-          2. 옵션 목록
-        </h2>
+        <div style={{ fontSize: 12, color: "#9ca3af", marginBottom: 8 }}>
+          {selectedCakeId
+            ? `등록된 옵션 수: ${options.length} 개`
+            : "케이크를 선택하면 옵션 목록이 표시됩니다."}
+        </div>
 
-        {loadingOptions ? (
-          <p style={{ fontSize: 13, color: "#6b7280" }}>옵션 불러오는 중...</p>
-        ) : options.length === 0 ? (
-          <p style={{ fontSize: 13, color: "#6b7280" }}>
-            이 케이크에 등록된 옵션이 없습니다.
-          </p>
-        ) : (
-          <table
-            style={{
-              width: "100%",
-              borderCollapse: "collapse",
-              fontSize: 13,
-              marginBottom: 12,
-            }}
-          >
+        <div style={{ overflowX: "auto" }}>
+          <table className="table table-striped">
             <thead>
               <tr>
-                <th style={{ textAlign: "left", borderBottom: "1px solid #e5e7eb", padding: 8 }}>
-                  ID
-                </th>
-                <th style={{ textAlign: "left", borderBottom: "1px solid #e5e7eb", padding: 8 }}>
-                  옵션 이름
-                </th>
-                <th style={{ textAlign: "right", borderBottom: "1px solid #e5e7eb", padding: 8 }}>
-                  추가 금액
-                </th>
-                <th style={{ borderBottom: "1px solid #e5e7eb", padding: 8 }}>삭제</th>
+                <th style={{ width: 60 }}>ID</th>
+                <th>옵션 이름</th>
+                <th style={{ width: 120 }}>추가 금액(원)</th>
+                <th style={{ width: 140, textAlign: "right" }}>관리</th>
               </tr>
             </thead>
             <tbody>
-              {options.map((o) => (
-                <tr key={o.id}>
-                  <td style={{ padding: 8 }}>{o.id}</td>
-                  <td style={{ padding: 8 }}>{o.optionName}</td>
-                  <td style={{ padding: 8, textAlign: "right" }}>
-                    {o.price.toLocaleString()} 원
-                  </td>
-                  <td style={{ padding: 8, textAlign: "center" }}>
-                    <button
-                      onClick={() => handleDeleteOption(o.id)}
-                      style={{
-                        padding: "4px 8px",
-                        fontSize: 12,
-                        borderRadius: 999,
-                        border: "1px solid #fecaca",
-                        background: "#fee2e2",
-                        cursor: "pointer",
-                      }}
-                    >
-                      삭제
-                    </button>
+              {!selectedCakeId ? (
+                <tr>
+                  <td colSpan={4} style={{ paddingTop: 20, paddingBottom: 16 }}>
+                    옵션을 관리할 케이크를 먼저 선택해주세요.
                   </td>
                 </tr>
-              ))}
+              ) : loadingOptions ? (
+                <tr>
+                  <td colSpan={4} style={{ paddingTop: 20, paddingBottom: 16 }}>
+                    옵션 목록을 불러오는 중입니다...
+                  </td>
+                </tr>
+              ) : options.length === 0 ? (
+                <tr>
+                  <td colSpan={4} style={{ paddingTop: 20, paddingBottom: 16 }}>
+                    아직 등록된 옵션이 없습니다. 오른쪽에서 첫 옵션을 추가해보세요.
+                  </td>
+                </tr>
+              ) : (
+                options.map((opt) => {
+                  const isEditing = editingId === opt.id;
+                  return (
+                    <tr key={opt.id}>
+                      <td>{opt.id}</td>
+                      <td>
+                        {isEditing ? (
+                          <input
+                            className="input"
+                            value={editName}
+                            onChange={(e) => setEditName(e.target.value)}
+                          />
+                        ) : (
+                          opt.optionName
+                        )}
+                      </td>
+                      <td>
+                        {isEditing ? (
+                          <input
+                            className="input"
+                            type="number"
+                            min={0}
+                            value={editPrice}
+                            onChange={(e) => setEditPrice(e.target.value)}
+                          />
+                        ) : (
+                          opt.price.toLocaleString()
+                        )}
+                      </td>
+                      <td style={{ textAlign: "right" }}>
+                        {isEditing ? (
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "flex-end",
+                              gap: 6,
+                            }}
+                          >
+                            <button
+                              className="btn btn-primary"
+                              style={{ fontSize: 11, padding: "4px 10px" }}
+                              type="button"
+                              onClick={() => saveEdit(opt.id)}
+                              disabled={savingEdit}
+                            >
+                              {savingEdit ? "저장 중..." : "저장"}
+                            </button>
+                            <button
+                              className="btn btn-ghost"
+                              style={{ fontSize: 11, padding: "4px 10px" }}
+                              type="button"
+                              onClick={cancelEdit}
+                              disabled={savingEdit}
+                            >
+                              취소
+                            </button>
+                          </div>
+                        ) : (
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "flex-end",
+                              gap: 6,
+                            }}
+                          >
+                            <button
+                              className="btn"
+                              style={{ fontSize: 11, padding: "4px 10px" }}
+                              type="button"
+                              onClick={() => startEdit(opt)}
+                            >
+                              편집
+                            </button>
+                            <button
+                              className="btn"
+                              style={{ fontSize: 11, padding: "4px 10px" }}
+                              type="button"
+                              onClick={() => handleDelete(opt.id)}
+                            >
+                              삭제
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
-        )}
+        </div>
+      </section>
 
-        {/* 옵션 추가 폼 */}
-        <form
-          onSubmit={handleAddOption}
-          style={{ display: "flex", gap: 8, alignItems: "center" }}
-        >
-          <input
-            placeholder="옵션 이름"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            style={{
-              flex: 2,
-              padding: 8,
-              fontSize: 13,
-              borderRadius: 8,
-              border: "1px solid #d1d5db",
-            }}
-          />
-          <input
-            placeholder="추가 금액"
-            value={newPrice}
-            onChange={(e) => setNewPrice(e.target.value)}
-            style={{
-              flex: 1,
-              padding: 8,
-              fontSize: 13,
-              borderRadius: 8,
-              border: "1px solid #d1d5db",
-            }}
-          />
-          <button
-            type="submit"
-            disabled={saving}
-            style={{
-              padding: "8px 12px",
-              fontSize: 13,
-              borderRadius: 999,
-              border: "none",
-              background: "#4f46e5",
-              color: "white",
-              cursor: saving ? "default" : "pointer",
-            }}
-          >
-            {saving ? "추가 중..." : "옵션 추가"}
-          </button>
-        </form>
+      {/* 오른쪽: 새 옵션 추가 */}
+      <section className="card card-compact">
+        <div className="card-header">
+          <h2 className="card-section-title">새 옵션 추가</h2>
+          <p className="card-section-sub">
+            선택한 케이크에 연결되는 옵션을 추가합니다.
+            <br />
+            예: “1호(+5,000원)”, “레터링 문구(+3,000원)”, “생크림 변경(+2,000원)” 등
+          </p>
+        </div>
+
+        {!selectedCakeId || cakes.length === 0 ? (
+          <div style={{ fontSize: 12, color: "#f97373" }}>
+            먼저 상단에서 케이크를 선택하거나, 케이크 관리 화면에서 상품을 추가해주세요.
+          </div>
+        ) : (
+          <>
+            <form onSubmit={handleCreate}>
+              <div className="form-field">
+                <label className="form-label">옵션 이름</label>
+                <input
+                  className="input"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="예: 1호 사이즈, 레터링 추가, 생크림 변경"
+                />
+              </div>
+
+              <div className="form-field">
+                <label className="form-label">추가 금액(원)</label>
+                <input
+                  className="input"
+                  type="number"
+                  min={0}
+                  value={newPrice}
+                  onChange={(e) => setNewPrice(e.target.value)}
+                  placeholder="예: 5000"
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="btn btn-primary"
+                style={{ width: "100%", marginTop: 6 }}
+                disabled={creating}
+              >
+                {creating ? "추가 중..." : "새 옵션 등록"}
+              </button>
+            </form>
+
+            <div style={{ marginTop: 10, fontSize: 11, color: "#9ca3af" }}>
+              <p style={{ margin: 0 }}>
+                옵션 금액은 “기본 가격에 더해지는 값”입니다.
+                <br />
+                예를 들어 기본 35,000원 케이크에 “1호(+5,000)” 옵션을 선택하면 40,000원이 됩니다.
+              </p>
+            </div>
+          </>
+        )}
       </section>
     </div>
   );

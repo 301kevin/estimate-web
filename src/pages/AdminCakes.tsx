@@ -1,7 +1,6 @@
 // src/pages/AdminCakes.tsx
 import * as React from "react";
-import { useNavigate } from "react-router-dom";
-import { api, setAuthToken } from "../api";
+import { api } from "../api";
 
 interface Cake {
   id: number;
@@ -14,362 +13,328 @@ const AdminCakes: React.FC = () => {
   const [loading, setLoading] = React.useState(true);
   const [err, setErr] = React.useState("");
 
-  // 추가 폼 상태
+  // 새 케이크 추가 폼
   const [newName, setNewName] = React.useState("");
-  const [newPrice, setNewPrice] = React.useState("");
-  const [createLoading, setCreateLoading] = React.useState(false);
-  const [createErr, setCreateErr] = React.useState("");
+  const [newPrice, setNewPrice] = React.useState<string>("0");
+  const [creating, setCreating] = React.useState(false);
 
-  // 삭제 진행 중인 ID
-  const [deletingId, setDeletingId] = React.useState<number | null>(null);
+  // 편집 상태
+  const [editingId, setEditingId] = React.useState<number | null>(null);
+  const [editName, setEditName] = React.useState("");
+  const [editPrice, setEditPrice] = React.useState<string>("0");
+  const [savingEdit, setSavingEdit] = React.useState(false);
 
-  const navigate = useNavigate();
-  const currentUsername = localStorage.getItem("adminUsername");
-
-  // 공통: 인증 에러 처리
-  const handleAuthError = (status?: number) => {
-    if (status === 401) {
-      setAuthToken(null);
-      localStorage.removeItem("adminUsername");
-      navigate("/login");
-    }
-  };
-
-  // 케이크 목록 불러오기
+  // 목록 불러오기
   const loadCakes = React.useCallback(() => {
     setLoading(true);
+    setErr("");
+
     api
-      .get<Cake[]>("/api/cakes") // ⚠️ 백엔드 엔드포인트 그대로 사용
-      .then((r) => {
-        setCakes(r.data);
-        setErr("");
+      .get<Cake[]>("/api/cakes")
+      .then((res) => {
+        setCakes(res.data);
       })
       .catch((error) => {
         console.error("load cakes error:", error);
-        const status = error.response?.status;
-        handleAuthError(status);
-
-        if (status === 403) {
-          setErr("관리자 권한이 없습니다.");
-        } else if (status !== 401) {
-          setErr("케이크 목록을 불러오지 못했습니다.");
-        }
+        setErr("케이크 목록을 불러오지 못했습니다. (권한/서버 상태를 확인하세요)");
       })
       .finally(() => setLoading(false));
-  }, [navigate]);
+  }, []);
 
   React.useEffect(() => {
     loadCakes();
   }, [loadCakes]);
 
-  const handleLogout = () => {
-    setAuthToken(null);
-    localStorage.removeItem("adminUsername");
-    navigate("/login");
-  };
-
-  // 케이크 추가
+  // 새 케이크 추가
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    setCreateErr("");
-
-    const name = newName.trim();
-    const priceNum = parseInt(newPrice, 10);
-
-    if (!name) {
-      setCreateErr("케이크 이름을 입력해주세요.");
-      return;
-    }
-    if (Number.isNaN(priceNum) || priceNum < 0) {
-      setCreateErr("가격을 0 이상 숫자로 입력해주세요.");
+    if (!newName.trim()) {
+      setErr("케이크 이름을 입력해주세요.");
       return;
     }
 
-    setCreateLoading(true);
+    const priceValue = Number(newPrice);
+    if (Number.isNaN(priceValue) || priceValue < 0) {
+      setErr("가격은 0 이상 숫자로 입력해주세요.");
+      return;
+    }
+
+    setCreating(true);
+    setErr("");
+
     try {
-      // ⚠️ 백엔드에서 받는 필드 이름 확인 (name, price 맞음)
-      await api.post("/api/cakes", {
-        name,
-        price: priceNum,
+      const res = await api.post<Cake>("/api/cakes", {
+        name: newName.trim(),
+        price: priceValue,
       });
 
+      setCakes((prev) => [res.data, ...prev]);
       setNewName("");
-      setNewPrice("");
-      await loadCakes();
+      setNewPrice("0");
     } catch (error: any) {
       console.error("create cake error:", error);
       const status = error.response?.status;
       if (status === 400) {
-        setCreateErr("입력값이 형식에 맞지 않습니다.");
+        setErr("입력값을 다시 확인해주세요. (길이/검증 제약 위반)");
       } else {
-        setCreateErr("케이크를 추가하지 못했습니다.");
+        setErr("케이크 생성 중 오류가 발생했습니다.");
       }
     } finally {
-      setCreateLoading(false);
+      setCreating(false);
     }
   };
 
-  // 케이크 삭제
-  const handleDelete = async (id: number) => {
-    if (!window.confirm(`정말로 케이크 ID ${id}를 삭제할까요?`)) return;
+  // 편집 시작
+  const startEdit = (cake: Cake) => {
+    setEditingId(cake.id);
+    setEditName(cake.name);
+    setEditPrice(String(cake.price));
+    setErr("");
+  };
 
-    setDeletingId(id);
+  // 편집 취소
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditName("");
+    setEditPrice("0");
+  };
+
+  // 편집 저장
+  const saveEdit = async (id: number) => {
+    if (!editName.trim()) {
+      setErr("케이크 이름을 입력해주세요.");
+      return;
+    }
+
+    const priceValue = Number(editPrice);
+    if (Number.isNaN(priceValue) || priceValue < 0) {
+      setErr("가격은 0 이상 숫자로 입력해주세요.");
+      return;
+    }
+
+    setSavingEdit(true);
+    setErr("");
+
+    try {
+      const res = await api.put<Cake>(`/api/cakes/${id}`, {
+        name: editName.trim(),
+        price: priceValue,
+      });
+
+      setCakes((prev) =>
+        prev.map((c) => (c.id === id ? res.data : c))
+      );
+      cancelEdit();
+    } catch (error: any) {
+      console.error("update cake error:", error);
+      const status = error.response?.status;
+      if (status === 400) {
+        setErr("입력값을 다시 확인해주세요. (길이/검증 제약 위반)");
+      } else if (status === 404) {
+        setErr("해당 케이크를 찾을 수 없습니다. (이미 삭제되었을 수 있음)");
+      } else {
+        setErr("케이크 수정 중 오류가 발생했습니다.");
+      }
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  // 삭제
+  const handleDelete = async (id: number) => {
+    if (!window.confirm("정말로 이 케이크를 삭제할까요?")) return;
+
     try {
       await api.delete(`/api/cakes/${id}`);
       setCakes((prev) => prev.filter((c) => c.id !== id));
+      if (editingId === id) {
+        cancelEdit();
+      }
     } catch (error) {
       console.error("delete cake error:", error);
-      alert("케이크 삭제에 실패했습니다.");
-    } finally {
-      setDeletingId(null);
+      alert("삭제 중 오류가 발생했습니다.");
     }
   };
 
   return (
-    <div style={{ maxWidth: 960, margin: "32px auto", fontFamily: "system-ui" }}>
-      {/* 상단 바 */}
-      <header
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 24,
-        }}
-      >
-        <div>
-          <div style={{ fontSize: 14, color: "#6b7280" }}>Estimate API</div>
-          <h1 style={{ fontSize: 20, margin: 0 }}>케이크 관리</h1>
-        </div>
-
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          {currentUsername && (
-            <span style={{ fontSize: 14, color: "#4b5563" }}>
-              {currentUsername} 님
-            </span>
-          )}
-          <button
-            onClick={handleLogout}
-            style={{
-              padding: "6px 12px",
-              fontSize: 13,
-              borderRadius: 999,
-              border: "1px solid #e5e7eb",
-              background: "white",
-              cursor: "pointer",
-            }}
-          >
-            로그아웃
-          </button>
-        </div>
-      </header>
-
-      {/* 케이크 추가 섹션 */}
-      <section
-        style={{
-          marginBottom: 32,
-          padding: 16,
-          borderRadius: 12,
-          border: "1px solid #e5e7eb",
-          background: "white",
-        }}
-      >
-        <h2 style={{ fontSize: 16, marginTop: 0, marginBottom: 12 }}>
-          케이크 추가
-        </h2>
-        <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 12 }}>
-          견적에서 사용할 기본 케이크 이름과 가격을 등록합니다.
-        </p>
-
-        <form
-          onSubmit={handleCreate}
-          style={{
-            display: "grid",
-            gridTemplateColumns: "2fr 1fr auto",
-            gap: 8,
-          }}
-        >
-          <input
-            placeholder="케이크 이름"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            style={{
-              padding: 8,
-              fontSize: 13,
-              borderRadius: 8,
-              border: "1px solid #d1d5db",
-            }}
-          />
-          <input
-            placeholder="가격 (원)"
-            value={newPrice}
-            onChange={(e) => setNewPrice(e.target.value)}
-            style={{
-              padding: 8,
-              fontSize: 13,
-              borderRadius: 8,
-              border: "1px solid #d1d5db",
-            }}
-          />
-          <button
-            type="submit"
-            disabled={createLoading}
-            style={{
-              padding: "8px 14px",
-              fontSize: 13,
-              borderRadius: 999,
-              border: "none",
-              background: "#4f46e5",
-              color: "white",
-              cursor: createLoading ? "default" : "pointer",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {createLoading ? "추가 중..." : "추가"}
-          </button>
-        </form>
-
-        {createErr && (
-          <p style={{ marginTop: 8, fontSize: 13, color: "crimson" }}>
-            {createErr}
+    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.7fr) minmax(0, 1.3fr)", gap: 18 }}>
+      {/* 케이크 목록 */}
+      <section className="card">
+        <div className="card-header">
+          <h1 className="card-title">케이크 상품 관리</h1>
+          <p className="card-sub">
+            매장에서 판매하는 케이크의 기본 정보를 관리합니다.
+            <br />
+            이름과 기본 가격만 먼저 정리해두고, 상세 옵션은 별도 화면에서 관리할 수 있습니다.
           </p>
-        )}
-      </section>
-
-      {/* 케이크 목록 섹션 */}
-      <section>
-        <h2 style={{ fontSize: 16, marginBottom: 12 }}>케이크 목록</h2>
-        <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 12 }}>
-          등록된 케이크 리스트입니다. (옵션/견적과 연결 예정)
-        </p>
+        </div>
 
         {err && (
-          <p style={{ color: "crimson", fontSize: 13, marginBottom: 12 }}>
+          <p className="text-error" style={{ marginBottom: 8 }}>
             {err}
           </p>
         )}
 
-        {loading ? (
-          <p style={{ fontSize: 13, color: "#6b7280" }}>불러오는 중...</p>
-        ) : cakes.length === 0 ? (
-          <p style={{ fontSize: 13, color: "#6b7280" }}>
-            아직 등록된 케이크가 없습니다.
-          </p>
-        ) : (
-          <div
-            style={{
-              borderRadius: 12,
-              border: "1px solid #e5e7eb",
-              overflow: "hidden",
-              background: "white",
-            }}
-          >
-            <table
-              style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                fontSize: 13,
-              }}
-            >
-              <thead style={{ background: "#f9fafb" }}>
+        <div style={{ fontSize: 12, color: "#9ca3af", marginBottom: 8 }}>
+          등록된 케이크 수: <strong>{cakes.length}</strong> 개
+        </div>
+
+        <div style={{ overflowX: "auto" }}>
+          <table className="table table-striped">
+            <thead>
+              <tr>
+                <th style={{ width: 60 }}>ID</th>
+                <th>이름</th>
+                <th style={{ width: 120 }}>기본 가격(원)</th>
+                <th style={{ width: 140, textAlign: "right" }}>관리</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
                 <tr>
-                  <th
-                    style={{
-                      textAlign: "left",
-                      padding: "8px 12px",
-                      borderBottom: "1px solid #e5e7eb",
-                    }}
-                  >
-                    ID
-                  </th>
-                  <th
-                    style={{
-                      textAlign: "left",
-                      padding: "8px 12px",
-                      borderBottom: "1px solid #e5e7eb",
-                    }}
-                  >
-                    이름
-                  </th>
-                  <th
-                    style={{
-                      textAlign: "left",
-                      padding: "8px 12px",
-                      borderBottom: "1px solid #e5e7eb",
-                    }}
-                  >
-                    가격
-                  </th>
-                  <th
-                    style={{
-                      textAlign: "left",
-                      padding: "8px 12px",
-                      borderBottom: "1px solid #e5e7eb",
-                    }}
-                  >
-                    작업
-                  </th>
+                  <td colSpan={4} style={{ paddingTop: 20, paddingBottom: 16 }}>
+                    케이크 목록을 불러오는 중입니다...
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {cakes.map((c) => (
-                  <tr key={c.id}>
-                    <td
-                      style={{
-                        padding: "8px 12px",
-                        borderBottom: "1px solid #f3f4f6",
-                        color: "#4b5563",
-                      }}
-                    >
-                      {c.id}
-                    </td>
-                    <td
-                      style={{
-                        padding: "8px 12px",
-                        borderBottom: "1px solid #f3f4f6",
-                        color: "#111827",
-                      }}
-                    >
-                      {c.name}
-                    </td>
-                    <td
-                      style={{
-                        padding: "8px 12px",
-                        borderBottom: "1px solid #f3f4f6",
-                        color: "#4b5563",
-                      }}
-                    >
-                      {c.price.toLocaleString()} 원
-                    </td>
-                    <td
-                      style={{
-                        padding: "8px 12px",
-                        borderBottom: "1px solid #f3f4f6",
-                      }}
-                    >
-                      <button
-                        onClick={() => handleDelete(c.id)}
-                        disabled={deletingId === c.id}
-                        style={{
-                          padding: "4px 10px",
-                          fontSize: 12,
-                          borderRadius: 999,
-                          border: "1px solid #fecaca",
-                          background:
-                            deletingId === c.id ? "#fee2e2" : "white",
-                          color: "#b91c1c",
-                          cursor:
-                            deletingId === c.id ? "default" : "pointer",
-                        }}
-                      >
-                        {deletingId === c.id ? "삭제 중..." : "삭제"}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+              ) : cakes.length === 0 ? (
+                <tr>
+                  <td colSpan={4} style={{ paddingTop: 20, paddingBottom: 16 }}>
+                    아직 등록된 케이크가 없습니다. 오른쪽에서 첫 케이크를 추가해보세요.
+                  </td>
+                </tr>
+              ) : (
+                cakes.map((cake) => {
+                  const isEditing = editingId === cake.id;
+                  return (
+                    <tr key={cake.id}>
+                      <td>{cake.id}</td>
+                      <td>
+                        {isEditing ? (
+                          <input
+                            className="input"
+                            value={editName}
+                            onChange={(e) => setEditName(e.target.value)}
+                          />
+                        ) : (
+                          cake.name
+                        )}
+                      </td>
+                      <td>
+                        {isEditing ? (
+                          <input
+                            className="input"
+                            type="number"
+                            min={0}
+                            value={editPrice}
+                            onChange={(e) => setEditPrice(e.target.value)}
+                          />
+                        ) : (
+                          cake.price.toLocaleString()
+                        )}
+                      </td>
+                      <td style={{ textAlign: "right" }}>
+                        {isEditing ? (
+                          <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
+                            <button
+                              className="btn btn-primary"
+                              style={{ fontSize: 11, padding: "4px 10px" }}
+                              type="button"
+                              onClick={() => saveEdit(cake.id)}
+                              disabled={savingEdit}
+                            >
+                              {savingEdit ? "저장 중..." : "저장"}
+                            </button>
+                            <button
+                              className="btn btn-ghost"
+                              style={{ fontSize: 11, padding: "4px 10px" }}
+                              type="button"
+                              onClick={cancelEdit}
+                              disabled={savingEdit}
+                            >
+                              취소
+                            </button>
+                          </div>
+                        ) : (
+                          <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
+                            <button
+                              className="btn"
+                              style={{ fontSize: 11, padding: "4px 10px" }}
+                              type="button"
+                              onClick={() => startEdit(cake)}
+                            >
+                              편집
+                            </button>
+                            <button
+                              className="btn"
+                              style={{ fontSize: 11, padding: "4px 10px" }}
+                              type="button"
+                              onClick={() => handleDelete(cake.id)}
+                            >
+                              삭제
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {/* 새 케이크 추가 */}
+      <section className="card card-compact">
+        <div className="card-header">
+          <h2 className="card-section-title">새 케이크 추가</h2>
+          <p className="card-section-sub">
+            가장 자주 판매하는 케이크부터 차근차근 등록해두면,
+            <br />
+            옵션/견적 화면에서 바로 사용할 수 있습니다.
+          </p>
+        </div>
+
+        <form onSubmit={handleCreate}>
+          <div className="form-field">
+            <label className="form-label">케이크 이름</label>
+            <input
+              className="input"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="예: 초코 생크림, 딸기 생크림"
+            />
           </div>
-        )}
+
+          <div className="form-field">
+            <label className="form-label">기본 가격(원)</label>
+            <input
+              className="input"
+              type="number"
+              min={0}
+              value={newPrice}
+              onChange={(e) => setNewPrice(e.target.value)}
+              placeholder="예: 35000"
+            />
+          </div>
+
+          <button
+            type="submit"
+            className="btn btn-primary"
+            style={{ width: "100%", marginTop: 6 }}
+            disabled={creating}
+          >
+            {creating ? "추가 중..." : "새 케이크 등록"}
+          </button>
+        </form>
+
+        <div style={{ marginTop: 10, fontSize: 11, color: "#9ca3af" }}>
+          <p style={{ margin: 0 }}>
+            기본 가격은 “옵션이 전혀 없는 상태”의 가격입니다.
+            <br />
+            사이즈/토핑/문구 같은 추가 금액은 옵션 화면에서 따로 설정합니다.
+          </p>
+        </div>
       </section>
     </div>
   );
