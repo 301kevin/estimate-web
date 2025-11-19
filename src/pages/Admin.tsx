@@ -1,7 +1,7 @@
-// estimate-web/src/pages/Admin.tsx
+// src/pages/Admin.tsx
 import * as React from "react";
-import { api, setAuthToken } from "../api";
 import { useNavigate } from "react-router-dom";
+import { api, setAuthToken } from "../api";
 
 interface AdminUser {
   id: number;
@@ -10,53 +10,39 @@ interface AdminUser {
 }
 
 const Admin: React.FC = () => {
-  const [rows, setRows] = React.useState<AdminUser[]>([]);
-  const [loading, setLoading] = React.useState(true);
-  const [err, setErr] = React.useState("");
-
-  // 추가 폼
-  const [newUsername, setNewUsername] = React.useState("");
-  const [newPassword, setNewPassword] = React.useState("");
-  const [newRole, setNewRole] = React.useState("ADMIN");
-  const [createLoading, setCreateLoading] = React.useState(false);
-  const [createErr, setCreateErr] = React.useState("");
-
-  // 삭제 진행 중인 ID
-  const [deletingId, setDeletingId] = React.useState<number | null>(null);
-
   const navigate = useNavigate();
   const currentUsername = localStorage.getItem("adminUsername");
 
+  const [users, setUsers] = React.useState<AdminUser[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [err, setErr] = React.useState("");
+
+  const [username, setUsername] = React.useState("");
+  const [password, setPassword] = React.useState("");
+  const [role, setRole] = React.useState("ADMIN");
+  const [creating, setCreating] = React.useState(false);
+
+  // 관리자 목록 불러오기
   const loadUsers = React.useCallback(() => {
     setLoading(true);
     api
       .get<AdminUser[]>("/api/admin/users")
       .then((r) => {
-        setRows(r.data);
+        setUsers(r.data);
         setErr("");
       })
       .catch((error) => {
-        console.error("admin users error:", error);
-        const status = error.response?.status;
-
-        if (status === 401) {
-          setErr("로그인이 필요합니다. 다시 로그인해주세요.");
-          setAuthToken(null);
-          localStorage.removeItem("adminUsername");
-          navigate("/login");
-        } else if (status === 403) {
-          setErr("관리자 권한이 없습니다.");
-        } else {
-          setErr("목록을 불러오지 못했습니다.");
-        }
+        console.error("load admin users error:", error);
+        setErr("관리자 목록을 불러오지 못했습니다. (권한 / 토큰 확인)");
       })
       .finally(() => setLoading(false));
-  }, [navigate]);
+  }, []);
 
   React.useEffect(() => {
     loadUsers();
   }, [loadUsers]);
 
+  // 로그아웃
   const handleLogout = () => {
     setAuthToken(null);
     localStorage.removeItem("adminUsername");
@@ -66,324 +52,196 @@ const Admin: React.FC = () => {
   // 관리자 추가
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    setCreateErr("");
-
-    const username = newUsername.trim();
-    const password = newPassword;
-
-    // username 3~50, password 8~100
-    if (username.length < 3 || username.length > 50) {
-      setCreateErr("아이디는 3~50자 사이여야 합니다.");
-      return;
-    }
-    if (password.length < 8 || password.length > 100) {
-      setCreateErr("비밀번호는 8~100자 사이여야 합니다.");
+    if (!username.trim() || !password.trim()) {
+      setErr("아이디와 비밀번호를 입력해주세요.");
       return;
     }
 
-    setCreateLoading(true);
+    setCreating(true);
+    setErr("");
+
     try {
       await api.post("/api/admin/users", {
-        username,
-        password,
-        role: newRole.trim() || "ADMIN",
+        username: username.trim(),
+        password: password.trim(),
+        role: role.trim() || "ADMIN",
       });
 
-      setNewUsername("");
-      setNewPassword("");
-      setNewRole("ADMIN");
-      await loadUsers();
+      setUsername("");
+      setPassword("");
+      setRole("ADMIN");
+      loadUsers();
     } catch (error: any) {
-      console.error("create admin error:", error);
-      if (error.response?.status === 409) {
-        setCreateErr("이미 사용 중인 아이디입니다.");
-      } else if (error.response?.status === 400) {
-        setCreateErr("입력값이 형식에 맞지 않습니다.");
+      console.error("create admin user error:", error);
+      const status = error.response?.status;
+
+      if (status === 409) {
+        setErr("이미 사용 중인 아이디입니다.");
+      } else if (status === 400) {
+        setErr("입력값을 다시 확인해주세요. (길이/형식 제약)");
       } else {
-        setCreateErr("관리자 계정을 생성하지 못했습니다.");
+        setErr("관리자 생성 중 오류가 발생했습니다.");
       }
     } finally {
-      setCreateLoading(false);
+      setCreating(false);
     }
   };
 
   // 관리자 삭제
   const handleDelete = async (id: number) => {
-    if (!window.confirm(`정말로 ID ${id} 관리자 계정을 삭제할까요?`)) return;
+    if (!window.confirm("정말로 이 관리자를 삭제할까요?")) return;
 
-    setDeletingId(id);
     try {
       await api.delete(`/api/admin/users/${id}`);
-      setRows((prev) => prev.filter((u) => u.id !== id));
+      setUsers((prev) => prev.filter((u) => u.id !== id));
     } catch (error) {
-      console.error("delete admin error:", error);
-      alert("삭제에 실패했습니다.");
-    } finally {
-      setDeletingId(null);
+      console.error("delete admin user error:", error);
+      alert("삭제 중 오류가 발생했습니다.");
     }
   };
 
   return (
-    <div style={{ maxWidth: 960, margin: "32px auto", fontFamily: "system-ui" }}>
-      {/* 상단 바 */}
-      <header
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 24,
-        }}
-      >
-        <div>
-          <div style={{ fontSize: 14, color: "#6b7280" }}>Estimate API</div>
-          <h1 style={{ fontSize: 20, margin: 0 }}>관리자 콘솔</h1>
+    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.7fr) minmax(0, 1.3fr)", gap: 18 }}>
+      {/* 왼쪽: 관리자 목록 */}
+      <section className="card">
+        <div className="card-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <h1 className="card-title">관리자 계정 관리</h1>
+            <p className="card-sub">
+              Estimate API 관리자 로그인에 사용되는 계정 목록입니다.
+              <br />
+              운영자, 직원 등 역할에 따라 계정을 분리해서 사용할 수 있습니다.
+            </p>
+          </div>
+
+          <div style={{ textAlign: "right", fontSize: 11 }}>
+            {currentUsername && (
+              <>
+                <div style={{ marginBottom: 4 }}>
+                  <span className="badge-admin">{currentUsername} 님</span>
+                </div>
+              </>
+            )}
+            <button className="btn btn-ghost" style={{ fontSize: 11, padding: "5px 10px" }} onClick={handleLogout}>
+              로그아웃
+            </button>
+          </div>
         </div>
-
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          {currentUsername && (
-            <span style={{ fontSize: 14, color: "#4b5563" }}>
-              {currentUsername} 님
-            </span>
-          )}
-          <button
-            onClick={handleLogout}
-            style={{
-              padding: "6px 12px",
-              fontSize: 13,
-              borderRadius: 999,
-              border: "1px solid #e5e7eb",
-              background: "white",
-              cursor: "pointer",
-            }}
-          >
-            로그아웃
-          </button>
-        </div>
-      </header>
-
-      {/* 관리자 추가 섹션 */}
-      <section
-        style={{
-          marginBottom: 32,
-          padding: 16,
-          borderRadius: 12,
-          border: "1px solid #e5e7eb",
-          background: "white",
-        }}
-      >
-        <h2 style={{ fontSize: 16, marginTop: 0, marginBottom: 12 }}>
-          관리자 계정 추가
-        </h2>
-        <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 12 }}>
-          내부에서 estimate-api를 운영할 관리자 계정을 등록합니다.
-        </p>
-
-        <form
-          onSubmit={handleCreate}
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1.5fr 1.5fr 1fr auto",
-            gap: 8,
-          }}
-        >
-          <input
-            placeholder="아이디 (3~50자)"
-            value={newUsername}
-            onChange={(e) => setNewUsername(e.target.value)}
-            minLength={3}
-            maxLength={50}
-            style={{
-              padding: 8,
-              fontSize: 13,
-              borderRadius: 8,
-              border: "1px solid #d1d5db",
-            }}
-          />
-          <input
-            type="password"
-            placeholder="비밀번호 (8~100자)"
-            value={newPassword}
-            onChange={(e) => setNewPassword(e.target.value)}
-            minLength={8}
-            maxLength={100}
-            style={{
-              padding: 8,
-              fontSize: 13,
-              borderRadius: 8,
-              border: "1px solid #d1d5db",
-            }}
-          />
-          <input
-            placeholder='역할 (기본: "ADMIN")'
-            value={newRole}
-            onChange={(e) => setNewRole(e.target.value)}
-            style={{
-              padding: 8,
-              fontSize: 13,
-              borderRadius: 8,
-              border: "1px solid #d1d5db",
-            }}
-          />
-          <button
-            type="submit"
-            disabled={createLoading}
-            style={{
-              padding: "8px 14px",
-              fontSize: 13,
-              borderRadius: 999,
-              border: "none",
-              background: "#4f46e5",
-              color: "white",
-              cursor: createLoading ? "default" : "pointer",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {createLoading ? "추가 중..." : "추가"}
-          </button>
-        </form>
-
-        {createErr && (
-          <p style={{ marginTop: 8, fontSize: 13, color: "crimson" }}>
-            {createErr}
-          </p>
-        )}
-      </section>
-
-      {/* 관리자 목록 섹션 */}
-      <section>
-        <h2 style={{ fontSize: 16, marginBottom: 12 }}>관리자 계정 목록</h2>
-        <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 12 }}>
-          estimate-api를 관리하는 관리자 계정 리스트입니다.
-        </p>
 
         {err && (
-          <p style={{ color: "crimson", fontSize: 13, marginBottom: 12 }}>
+          <p className="text-error" style={{ marginBottom: 10 }}>
             {err}
           </p>
         )}
 
-        {loading ? (
-          <p style={{ fontSize: 13, color: "#6b7280" }}>불러오는 중...</p>
-        ) : rows.length === 0 ? (
-          <p style={{ fontSize: 13, color: "#6b7280" }}>
-            아직 등록된 관리자 계정이 없습니다.
-          </p>
-        ) : (
-          <div
-            style={{
-              borderRadius: 12,
-              border: "1px solid #e5e7eb",
-              overflow: "hidden",
-              background: "white",
-            }}
-          >
-            <table
-              style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                fontSize: 13,
-              }}
-            >
-              <thead style={{ background: "#f9fafb" }}>
+        <div style={{ fontSize: 12, color: "#9ca3af", marginBottom: 8 }}>
+          현재 등록된 관리자 수: <strong>{users.length}</strong> 명
+        </div>
+
+        <div style={{ overflowX: "auto" }}>
+          <table className="table table-striped">
+            <thead>
+              <tr>
+                <th style={{ width: 60 }}>ID</th>
+                <th>아이디</th>
+                <th style={{ width: 90 }}>역할</th>
+                <th style={{ width: 90, textAlign: "right" }}>관리</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
                 <tr>
-                  <th
-                    style={{
-                      textAlign: "left",
-                      padding: "8px 12px",
-                      borderBottom: "1px solid #e5e7eb",
-                    }}
-                  >
-                    ID
-                  </th>
-                  <th
-                    style={{
-                      textAlign: "left",
-                      padding: "8px 12px",
-                      borderBottom: "1px solid #e5e7eb",
-                    }}
-                  >
-                    아이디
-                  </th>
-                  <th
-                    style={{
-                      textAlign: "left",
-                      padding: "8px 12px",
-                      borderBottom: "1px solid #e5e7eb",
-                    }}
-                  >
-                    역할
-                  </th>
-                  <th
-                    style={{
-                      textAlign: "left",
-                      padding: "8px 12px",
-                      borderBottom: "1px solid #e5e7eb",
-                    }}
-                  >
-                    작업
-                  </th>
+                  <td colSpan={4} style={{ paddingTop: 20, paddingBottom: 16 }}>
+                    관리자 목록을 불러오는 중입니다...
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {rows.map((u) => (
+              ) : users.length === 0 ? (
+                <tr>
+                  <td colSpan={4} style={{ paddingTop: 20, paddingBottom: 16 }}>
+                    등록된 관리자가 없습니다. 오른쪽에서 첫 관리자를 생성해보세요.
+                  </td>
+                </tr>
+              ) : (
+                users.map((u) => (
                   <tr key={u.id}>
-                    <td
-                      style={{
-                        padding: "8px 12px",
-                        borderBottom: "1px solid #f3f4f6",
-                        color: "#4b5563",
-                      }}
-                    >
-                      {u.id}
+                    <td>{u.id}</td>
+                    <td>{u.username}</td>
+                    <td>
+                      <span className="chip">{u.role}</span>
                     </td>
-                    <td
-                      style={{
-                        padding: "8px 12px",
-                        borderBottom: "1px solid #f3f4f6",
-                        color: "#111827",
-                      }}
-                    >
-                      {u.username}
-                    </td>
-                    <td
-                      style={{
-                        padding: "8px 12px",
-                        borderBottom: "1px solid #f3f4f6",
-                        color: "#4b5563",
-                      }}
-                    >
-                      {u.role}
-                    </td>
-                    <td
-                      style={{
-                        padding: "8px 12px",
-                        borderBottom: "1px solid #f3f4f6",
-                      }}
-                    >
+                    <td style={{ textAlign: "right" }}>
                       <button
+                        className="btn"
+                        style={{ fontSize: 11, padding: "4px 9px" }}
                         onClick={() => handleDelete(u.id)}
-                        disabled={deletingId === u.id}
-                        style={{
-                          padding: "4px 10px",
-                          fontSize: 12,
-                          borderRadius: 999,
-                          border: "1px solid #fecaca",
-                          background:
-                            deletingId === u.id ? "#fee2e2" : "white",
-                          color: "#b91c1c",
-                          cursor:
-                            deletingId === u.id ? "default" : "pointer",
-                        }}
+                        disabled={users.length === 1}
+                        title={users.length === 1 ? "마지막 관리자 계정은 삭제하지 않는 것을 추천합니다." : ""}
                       >
-                        {deletingId === u.id ? "삭제 중..." : "삭제"}
+                        삭제
                       </button>
                     </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {/* 오른쪽: 새 관리자 추가 */}
+      <section className="card card-compact">
+        <div className="card-header">
+          <h2 className="card-section-title">새 관리자 추가</h2>
+          <p className="card-section-sub">
+            매장에서 함께 일하는 직원이나 운영자를 위해 별도 계정을 만들어둘 수 있습니다.
+            <br />
+            아이디는 중복될 수 없으며, 비밀번호는 추후 DB에서 변경 가능합니다.
+          </p>
+        </div>
+
+        <form onSubmit={handleCreate}>
+          <div className="form-field">
+            <label className="form-label">아이디</label>
+            <input
+              className="input"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="예: admin, ops1"
+            />
           </div>
-        )}
+
+          <div className="form-field">
+            <label className="form-label">비밀번호</label>
+            <input
+              type="password"
+              className="input"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="로그인에 사용할 비밀번호"
+            />
+          </div>
+
+          <div className="form-field">
+            <label className="form-label">역할 (role)</label>
+            <select
+              className="select"
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+            >
+              <option value="ADMIN">ADMIN (전체 관리)</option>
+              <option value="OPS">OPS (운영 / 한정된 접근)</option>
+            </select>
+          </div>
+
+          <button
+            type="submit"
+            className="btn btn-primary"
+            disabled={creating}
+            style={{ marginTop: 6, width: "100%" }}
+          >
+            {creating ? "생성 중..." : "새 관리자 계정 생성"}
+          </button>
+        </form>
       </section>
     </div>
   );
