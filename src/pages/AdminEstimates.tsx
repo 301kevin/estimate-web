@@ -901,58 +901,65 @@ const AdminEstimates: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {listItems.map((est, idx) => (
-                    <tr
-                      key={idx}
-                      style={{
-                        borderBottom: "1px solid #111827",
-                      }}
-                    >
-                      <td style={{ padding: "6px 8px", color: "#9ca3af" }}>
-                        {listPage * listSize + idx + 1}
-                      </td>
-                      <td style={{ padding: "6px 8px" }}>{est.itemName}</td>
-                      <td style={{ padding: "6px 8px", textAlign: "right" }}>
-                        {est.quantity}
-                      </td>
-                      <td style={{ padding: "6px 8px", textAlign: "right" }}>
-                        {est.itemsTotal.toLocaleString()}원
-                      </td>
-                      <td style={{ padding: "6px 8px", textAlign: "right" }}>
-                        {est.optionsTotal.toLocaleString()}원
-                      </td>
-                      <td
+                  {listItems.map((est, idx) => {
+                    // 👇 여기서 id 들어오는지 확인용
+                    console.log("estimate row:", est);
+
+                    return (
+                      <tr
+                        key={est.id ?? idx}
                         style={{
-                          padding: "6px 8px",
-                          textAlign: "right",
-                          fontWeight: 600,
+                          borderBottom: "1px solid #111827",
                         }}
                       >
-                        {est.finalTotal.toLocaleString()}원
-                      </td>
-                    {/* 작성일시 */}
-                          <td style={{ padding: "6px 8px" }}>
-                            {est.createdAt
-                              ? new Date(est.createdAt).toLocaleString("ko-KR", {
-                                  timeZone: "Asia/Seoul",
-                                })
-                              : "-"}
-                          </td>
+                        <td style={{ padding: "6px 8px", color: "#9ca3af" }}>
+                          {listPage * listSize + idx + 1}
+                        </td>
+                        <td style={{ padding: "6px 8px" }}>{est.itemName}</td>
+                        <td style={{ padding: "6px 8px", textAlign: "right" }}>
+                          {est.quantity}
+                        </td>
+                        <td style={{ padding: "6px 8px", textAlign: "right" }}>
+                          {est.itemsTotal.toLocaleString()}원
+                        </td>
+                        <td style={{ padding: "6px 8px", textAlign: "right" }}>
+                          {est.optionsTotal.toLocaleString()}원
+                        </td>
+                        <td
+                          style={{
+                            padding: "6px 8px",
+                            textAlign: "right",
+                            fontWeight: 600,
+                          }}
+                        >
+                          {est.finalTotal.toLocaleString()}원
+                        </td>
 
-                          {/* 행별 PDF 버튼 */}
-                          <td style={{ padding: "6px 8px", textAlign: "center" }}>
-                            <button
-                              type="button"
-                              className="btn"
-                              style={{ fontSize: 11, padding: "4px 8px" }}
-                              onClick={() => handleRowPdf(est.id)}
-                            >
-                              PDF
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
+                        {/* 작성일시 */}
+                        <td style={{ padding: "6px 8px" }}>
+                          {est.createdAt
+                            ? new Date(est.createdAt).toLocaleString("ko-KR", {
+                                timeZone: "Asia/Seoul",
+                              })
+                            : "-"}
+                        </td>
+
+                        {/* 행별 PDF 버튼 */}
+                        <td style={{ padding: "6px 8px", textAlign: "center" }}>
+                          <button
+                            type="button"
+                            className="btn"
+                            style={{ fontSize: 11, padding: "4px 8px" }}
+                            onClick={() => handleRowPdf(est.id)}
+                          >
+                            PDF
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+
               </table>
             </div>
 
