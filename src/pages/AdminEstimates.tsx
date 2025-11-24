@@ -1,6 +1,7 @@
 // src/pages/AdminEstimates.tsx
 import * as React from "react";
 import { api } from "../api";
+import Pagination from "../components/common/Pagination";
 
 interface Cake {
   id: number;
@@ -79,6 +80,18 @@ const AdminEstimates: React.FC = () => {
   const [listTotalElements, setListTotalElements] = React.useState(0);
   const [listLoading, setListLoading] = React.useState(false);
 
+  // 🔍 검색 필터 상태
+  const [query, setQuery] = React.useState("");
+  const [minTotal, setMinTotal] = React.useState("");
+  const [maxTotal, setMaxTotal] = React.useState("");
+
+  // 🔽 날짜 필터 (작성일)
+  const [fromDate, setFromDate] = React.useState(""); // "2025-11-01" 같은 형식
+  const [toDate, setToDate] = React.useState("");
+
+  // 🔽 옵션 있는 견적만
+  const [onlyWithOptions, setOnlyWithOptions] = React.useState(false);
+
   // 케이크 목록 로드
   const loadCakes = React.useCallback(() => {
     setLoadingCakes(true);
@@ -133,8 +146,19 @@ const AdminEstimates: React.FC = () => {
       setErr("");
 
       api
-        .get<PageResult<EstimatePreview>>("/api/estimates", {
-          params: { page, size: listSize },
+        .get<PageResult<EstimatePreview>>("/api/estimates/search", {
+          params: {
+            page,
+            size: listSize,
+            query: query || undefined,
+            minTotal: minTotal ? Number(minTotal) : undefined,
+            maxTotal: maxTotal ? Number(maxTotal) : undefined,
+            // 날짜: LocalDateTime ISO 형식으로 변환
+            from: fromDate ? `${fromDate}T00:00:00` : undefined,
+            to: toDate ? `${toDate}T23:59:59` : undefined,
+            // 옵션 있는 견적만
+            hasOptions: onlyWithOptions ? true : undefined,
+          },
         })
         .then((res) => {
           const data = res.data;
@@ -149,8 +173,10 @@ const AdminEstimates: React.FC = () => {
         })
         .finally(() => setListLoading(false));
     },
-    [listSize]
+    [listSize, query, minTotal, maxTotal, fromDate, toDate, onlyWithOptions]
   );
+
+
 
   React.useEffect(() => {
     loadCakes();
@@ -402,6 +428,20 @@ const AdminEstimates: React.FC = () => {
   const handleNextPage = () => {
     if (listPage >= listTotalPages - 1) return;
     loadEstimateList(listPage + 1);
+  };
+
+  const handleSearch = () => {
+    loadEstimateList(0);
+  };
+
+  const handleResetFilters = () => {
+    setQuery("");
+    setMinTotal("");
+    setMaxTotal("");
+    setFromDate("");
+    setToDate("");
+    setOnlyWithOptions(false);
+    loadEstimateList(0);
   };
 
   return (
@@ -800,6 +840,115 @@ const AdminEstimates: React.FC = () => {
           </p>
         </div>
 
+          {/* 🔍 검색 / 필터 바 */}
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 8,
+              marginBottom: 12,
+              marginTop: 4,
+              alignItems: "flex-end",
+            }}
+          >
+            {/* 검색어 */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <label style={{ fontSize: 11, color: "#9ca3af" }}>검색어</label>
+              <input
+                className="input"
+                placeholder="케이크 이름 / 옵션명 등"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                style={{ minWidth: 180 }}
+              />
+            </div>
+
+            {/* 최소 금액 */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <label style={{ fontSize: 11, color: "#9ca3af" }}>최소 금액(최종)</label>
+              <input
+                className="input"
+                type="number"
+                min={0}
+                placeholder="ex) 20000"
+                value={minTotal}
+                onChange={(e) => setMinTotal(e.target.value)}
+                style={{ width: 120 }}
+              />
+            </div>
+
+            {/* 최대 금액 */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <label style={{ fontSize: 11, color: "#9ca3af" }}>최대 금액(최종)</label>
+              <input
+                className="input"
+                type="number"
+                min={0}
+                placeholder="ex) 100000"
+                value={maxTotal}
+                onChange={(e) => setMaxTotal(e.target.value)}
+                style={{ width: 120 }}
+              />
+            </div>
+
+            {/* 날짜 from */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <label style={{ fontSize: 11, color: "#9ca3af" }}>작성일 From</label>
+              <input
+                className="input"
+                type="date"
+                value={fromDate}
+                onChange={(e) => setFromDate(e.target.value)}
+                style={{ width: 150 }}
+              />
+            </div>
+
+            {/* 날짜 to */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <label style={{ fontSize: 11, color: "#9ca3af" }}>작성일 To</label>
+              <input
+                className="input"
+                type="date"
+                value={toDate}
+                onChange={(e) => setToDate(e.target.value)}
+                style={{ width: 150 }}
+              />
+            </div>
+
+            {/* 옵션 있는 견적만 */}
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+              <label style={{ fontSize: 11, color: "#9ca3af" }}>
+                <input
+                  type="checkbox"
+                  checked={onlyWithOptions}
+                  onChange={(e) => setOnlyWithOptions(e.target.checked)}
+                  style={{ marginRight: 4 }}
+                />
+                옵션 있는 견적만
+              </label>
+            </div>
+
+            {/* 검색 / 초기화 버튼 */}
+            <div style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleSearch}
+              >
+                검색
+              </button>
+              <button
+                type="button"
+                className="btn"
+                onClick={handleResetFilters}
+              >
+                초기화
+              </button>
+            </div>
+          </div>
+
+
+
         {listLoading ? (
           <div style={{ fontSize: 12, color: "#9ca3af" }}>목록 로딩 중...</div>
         ) : listItems.length === 0 ? (
@@ -964,38 +1113,15 @@ const AdminEstimates: React.FC = () => {
             </div>
 
             {/* 페이지네이션 */}
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginTop: 10,
-                fontSize: 12,
-                color: "#9ca3af",
-              }}
-            >
-              <span>
-                총 {listTotalElements}건 / {listPage + 1} / {listTotalPages} 페이지
-              </span>
-              <div style={{ display: "flex", gap: 6 }}>
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={handlePrevPage}
-                  disabled={listPage <= 0}
-                >
-                  이전
-                </button>
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={handleNextPage}
-                  disabled={listPage >= listTotalPages - 1}
-                >
-                  다음
-                </button>
-              </div>
-            </div>
+            <Pagination
+              page={listPage}
+              totalPages={listTotalPages}
+              totalElements={listTotalElements}
+              size={listSize}
+              onPrev={handlePrevPage}
+              onNext={handleNextPage}
+            />
+
           </>
         )}
       </section>
