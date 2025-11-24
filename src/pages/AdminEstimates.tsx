@@ -15,7 +15,6 @@ interface CakeOption {
   price: number;
 }
 
-// 백엔드 EstimateDtos.Response 에 맞춘 타입
 interface OptionLine {
   optionId: number;
   name: string;
@@ -24,6 +23,7 @@ interface OptionLine {
   lineTotal: number;
 }
 
+// 백엔드 EstimateResponse 에 맞춘 타입
 interface EstimatePreview {
   itemName: string;
   baseUnitPrice: number;
@@ -45,8 +45,8 @@ const AdminEstimates: React.FC = () => {
   const [selectedOptionIds, setSelectedOptionIds] = React.useState<number[]>([]);
 
   const [quantity, setQuantity] = React.useState<string>("1");
-  const [discountRatePct, setDiscountRatePct] = React.useState<string>("0");  // 10 → 10%
-  const [taxRatePct, setTaxRatePct] = React.useState<string>("10");          // 기본 10%
+  const [discountRatePct, setDiscountRatePct] = React.useState<string>("0"); // UI용
+  const [taxRatePct, setTaxRatePct] = React.useState<string>("10");         // UI용
 
   const [loadingCakes, setLoadingCakes] = React.useState(true);
   const [loadingOptions, setLoadingOptions] = React.useState(false);
@@ -56,6 +56,9 @@ const AdminEstimates: React.FC = () => {
   const [preview, setPreview] = React.useState<EstimatePreview | null>(null);
   const [err, setErr] = React.useState("");
   const [saveMsg, setSaveMsg] = React.useState("");
+
+  // ✅ 마지막으로 저장된 견적 ID (PDF 다운로드용)
+  const [lastSavedId, setLastSavedId] = React.useState<number | null>(null);
 
   // 케이크 목록
   const loadCakes = React.useCallback(() => {
@@ -164,7 +167,7 @@ const AdminEstimates: React.FC = () => {
     setSaveMsg("");
   };
 
-  // 서버 미리보기 호출
+  // 서버 미리보기
   const handlePreview = async () => {
     if (!selectedCakeId) {
       setErr("먼저 케이크를 선택해주세요.");
@@ -181,8 +184,6 @@ const AdminEstimates: React.FC = () => {
     setSaveMsg("");
 
     try {
-      // ⚠️ EstimateDtos.Request 필드에 맞춰서 최소한만 보냄
-      //   (cakeId, quantity, optionIds)
       const payload = {
         cakeId: selectedCakeId,
         quantity: q,
@@ -231,21 +232,73 @@ const AdminEstimates: React.FC = () => {
         : `estimate-${Date.now()}-${Math.random()}`);
 
     try {
-      // 컨트롤러: ResponseEntity<Long> 이라서 id 하나 온다고 가정
       const res = await api.post<number>("/api/estimates", payload, {
         headers: { "Idempotency-Key": idemKey },
       });
       const id = res.data;
+
+      setLastSavedId(id); // ✅ 마지막 저장 ID 기억
       setSaveMsg(`견적이 저장되었습니다. (ID: ${id})`);
     } catch (error: any) {
       console.error("save error:", error);
       const status = error.response?.status;
       if (status === 400) setErr("입력값을 다시 확인해주세요. (검증 실패)");
       else if (status === 401 || status === 403)
-        setErr("권한 오류입니다. 로그인 상태를 확인해주세요.");
+        setErr("권한 오류입니다. 로그인 상태를 다시 확인해주세요.");
       else setErr("견적 저장 중 오류가 발생했습니다.");
     } finally {
       setSaving(false);
+    }
+  };
+
+  // CSV 다운로드
+  const handleDownloadCsv = async () => {
+    setErr("");
+    try {
+      const res = await api.get<Blob>("/api/estimates/export.csv", {
+        responseType: "blob",
+      });
+
+      const blob = res.data;
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+      a.href = url;
+      a.download = `estimates-${today}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error: any) {
+      console.error("csv download error:", error);
+      setErr("CSV 다운로드 중 오류가 발생했습니다.");
+    }
+  };
+
+  // PDF 다운로드 (마지막 저장 견적 기준)
+  const handleDownloadPdf = async () => {
+    if (!lastSavedId) {
+      setErr("먼저 견적을 저장한 뒤 PDF를 다운로드할 수 있습니다.");
+      return;
+    }
+    setErr("");
+    try {
+      const res = await api.get<Blob>(`/api/estimates/${lastSavedId}/export.pdf`, {
+        responseType: "blob",
+      });
+
+      const blob = res.data;
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `estimate-${lastSavedId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error: any) {
+      console.error("pdf download error:", error);
+      setErr("PDF 다운로드 중 오류가 발생했습니다.");
     }
   };
 
@@ -258,7 +311,7 @@ const AdminEstimates: React.FC = () => {
     setSelectedCakeId(Number(value));
   };
 
-  // 서버 preview 기준 부가세 금액 계산 (Response에 taxAmount 없음)
+  // 서버 preview 기준 부가세 금액 계산 (Response에 taxAmount 없음 → 프론트에서 역산)
   const previewTaxAmount = React.useMemo(() => {
     if (!preview) return null;
     const t = preview.finalTotal - Math.round(preview.finalTotal / (1 + preview.taxRate));
@@ -361,7 +414,7 @@ const AdminEstimates: React.FC = () => {
           )}
         </div>
 
-        {/* 수량 / 할인 / 부가세 (지금은 프론트 계산용) */}
+        {/* 수량 / 할인 / 부가세 (지금은 UI + fallback 계산용) */}
         <div
           style={{
             display: "grid",
@@ -417,25 +470,49 @@ const AdminEstimates: React.FC = () => {
             display: "flex",
             gap: 8,
             marginTop: 4,
-            justifyContent: "flex-end",
+            justifyContent: "space-between",
+            alignItems: "center",
           }}
         >
-          <button
-            type="button"
-            className="btn"
-            onClick={handlePreview}
-            disabled={previewLoading || !selectedCakeId}
-          >
-            {previewLoading ? "계산 중..." : "미리보기"}
-          </button>
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={handleSave}
-            disabled={saving || !selectedCakeId}
-          >
-            {saving ? "저장 중..." : "견적 저장"}
-          </button>
+          {/* 왼쪽: CSV/PDF 다운로드 */}
+          <div style={{ display: "flex", gap: 6 }}>
+            <button type="button" className="btn" onClick={handleDownloadCsv}>
+              CSV 다운로드
+            </button>
+            <button
+              type="button"
+              className="btn"
+              onClick={handleDownloadPdf}
+              disabled={!lastSavedId}
+              title={
+                lastSavedId
+                  ? `마지막 저장 견적 ID: ${lastSavedId}`
+                  : "먼저 견적을 저장해야 PDF를 받을 수 있습니다."
+              }
+            >
+              PDF 다운로드
+            </button>
+          </div>
+
+          {/* 오른쪽: 미리보기 / 저장 */}
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              type="button"
+              className="btn"
+              onClick={handlePreview}
+              disabled={previewLoading || !selectedCakeId}
+            >
+              {previewLoading ? "계산 중..." : "미리보기"}
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={handleSave}
+              disabled={saving || !selectedCakeId}
+            >
+              {saving ? "저장 중..." : "견적 저장"}
+            </button>
+          </div>
         </div>
       </section>
 
@@ -475,7 +552,7 @@ const AdminEstimates: React.FC = () => {
             </div>
           </div>
 
-          {/* 옵션 리스트 (선택 기준) */}
+          {/* 옵션 리스트 */}
           <div>
             <div style={{ fontSize: 12, color: "#9ca3af", marginBottom: 2 }}>
               선택된 옵션
